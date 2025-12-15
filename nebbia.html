@@ -1,1 +1,425 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Nebbia al Crepuscolo – WebGL</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background:#000; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+    #ui {
+      position: fixed; left: 12px; top: 12px; z-index: 10;
+      width: min(360px, calc(100vw - 24px));
+      background: rgba(10, 12, 18, 0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 12px 12px 10px;
+      backdrop-filter: blur(10px);
+      color: rgba(255,255,255,0.9);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    #ui h1 { margin: 0 0 6px; font-size: 14px; font-weight: 650; letter-spacing: 0.2px; }
+    .row { display:flex; gap:10px; align-items:center; margin: 8px 0; }
+    .row label { flex: 1; font-size: 12px; color: rgba(255,255,255,0.78); }
+    .row input[type="range"] { flex: 1.6; }
+    .row output { width: 56px; text-align:right; font-size: 12px; color: rgba(255,255,255,0.85); }
+    button {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.18);
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.92);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    button:hover { background: rgba(255,255,255,0.12); }
+    .note { margin-top: 8px; font-size: 11px; color: rgba(255,255,255,0.65); line-height: 1.35; }
+    #hint {
+      position: fixed; right: 12px; bottom: 12px; z-index: 10;
+      background: rgba(10, 12, 18, 0.35);
+      border: 1px solid rgba(255,255,255,0.10);
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: rgba(255,255,255,0.80);
+      font-size: 12px;
+      backdrop-filter: blur(10px);
+      user-select: none;
+    }
+    a { color: rgba(255,255,255,0.85); }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h1>Nebbia al crepuscolo (WebGL)</h1>
+
+    <button id="startBtn">Start esperimento</button>
+
+    <div class="row" style="margin-top:10px;">
+      <label for="fogIntensity">Intensità nebbia</label>
+      <input id="fogIntensity" type="range" min="0" max="1" step="0.01" value="0.0">
+      <output id="fogVal">0%</output>
+    </div>
+
+    <div class="row">
+      <label for="fogSpeed">Velocità calo</label>
+      <input id="fogSpeed" type="range" min="0" max="1" step="0.01" value="0.35">
+      <output id="speedVal">35%</output>
+    </div>
+
+    <div class="row">
+      <label for="view">Zoom</label>
+      <input id="view" type="range" min="35" max="75" step="1" value="55">
+      <output id="viewVal">55°</output>
+    </div>
+
+    <div class="note">
+      Trascina per guardarti attorno. Rotella per zoom (oppure slider).<br>
+      La nebbia qui è “vera”: fog + haze volumetrica leggera.
+    </div>
+  </div>
+
+  <div id="hint">Drag = guarda • Wheel = zoom</div>
+
+  <script type="module">
+    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
+    import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
+
+    // ---------- Helpers ----------
+    const clamp01 = (x) => Math.max(0, Math.min(1, x));
+
+    // Un rumore 2D semplice (value noise) per “montagne” procedurali
+    function hash2(x, y){
+      // deterministico
+      let n = x * 374761393 + y * 668265263;
+      n = (n ^ (n >> 13)) * 1274126177;
+      return ((n ^ (n >> 16)) >>> 0) / 4294967295;
+    }
+    function lerp(a,b,t){ return a + (b-a)*t; }
+    function smooth(t){ return t*t*(3-2*t); }
+
+    function noise2(x, y){
+      const xi = Math.floor(x), yi = Math.floor(y);
+      const xf = x - xi, yf = y - yi;
+      const v00 = hash2(xi, yi);
+      const v10 = hash2(xi+1, yi);
+      const v01 = hash2(xi, yi+1);
+      const v11 = hash2(xi+1, yi+1);
+      const u = smooth(xf), v = smooth(yf);
+      return lerp(lerp(v00, v10, u), lerp(v01, v11, u), v);
+    }
+
+    function fbm(x, y){
+      let sum = 0, amp = 0.55, freq = 0.9;
+      for(let i=0;i<5;i++){
+        sum += amp * noise2(x*freq, y*freq);
+        amp *= 0.5;
+        freq *= 2.0;
+      }
+      return sum;
+    }
+
+    // ---------- Scene ----------
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    document.body.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+
+    // Colori crepuscolo (scena + fog)
+    const duskFogColor = new THREE.Color("#6b7ea6");  // aria fredda
+    scene.fog = new THREE.Fog(duskFogColor, 30, 420); // verrà animata
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1200);
+    camera.position.set(0, 28, 115);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.target.set(0, 18, 0);
+    controls.minDistance = 55;
+    controls.maxDistance = 220;
+    controls.maxPolarAngle = Math.PI * 0.49;
+
+    // ---------- Sky (shader semplice) ----------
+    // Un cielo gradiente con “crepuscolo” e una lieve banda luminosa verso l’orizzonte.
+    const skyGeo = new THREE.SphereGeometry(800, 48, 32);
+    const skyMat = new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      uniforms: {
+        topColor: { value: new THREE.Color("#0b1020") },
+        midColor: { value: new THREE.Color("#27335a") },
+        horiColor:{ value: new THREE.Color("#b07a55") },
+        fogColor: { value: duskFogColor },
+        time: { value: 0.0 }
+      },
+      vertexShader: `
+        varying vec3 vPos;
+        void main(){
+          vPos = position;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 topColor;
+        uniform vec3 midColor;
+        uniform vec3 horiColor;
+        uniform vec3 fogColor;
+        uniform float time;
+        varying vec3 vPos;
+
+        float softBand(float x, float center, float width){
+          float d = abs(x - center);
+          return 1.0 - smoothstep(0.0, width, d);
+        }
+
+        void main(){
+          // y normalizzata: -1..1
+          float y = normalize(vPos).y;
+          float t = (y + 1.0) * 0.5; // 0..1
+
+          // gradiente base
+          vec3 col = mix(horiColor, midColor, smoothstep(0.05, 0.55, t));
+          col = mix(col, topColor, smoothstep(0.55, 1.0, t));
+
+          // banda luminosa all'orizzonte (crepuscolo)
+          float band = softBand(t, 0.18, 0.12);
+          col += band * vec3(0.18, 0.10, 0.05);
+
+          // leggero “respiro” (quasi impercettibile)
+          col *= 0.985 + 0.015 * sin(time * 0.25);
+
+          // lieve contaminazione con colore nebbia
+          col = mix(col, fogColor, 0.08);
+          gl_FragColor = vec4(col, 1.0);
+        }
+      `
+    });
+    const sky = new THREE.Mesh(skyGeo, skyMat);
+    scene.add(sky);
+
+    // ---------- Lighting ----------
+    // Luce “luna/ultima luce” laterale + riempimento
+    const dir = new THREE.DirectionalLight("#d6dbe8", 0.85);
+    dir.position.set(-120, 90, 40);
+    scene.add(dir);
+
+    const fill = new THREE.HemisphereLight("#6d7aa8", "#151a22", 0.85);
+    scene.add(fill);
+
+    // ---------- Ground (quota del monte) ----------
+    const groundGeo = new THREE.PlaneGeometry(1200, 1200, 1, 1);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color("#12151c"),
+      roughness: 1.0,
+      metalness: 0.0
+    });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI/2;
+    ground.position.y = 0;
+    scene.add(ground);
+
+    // ---------- Mountain layers ----------
+    // Creiamo più creste di montagne (piani verticali “tagliati” con displacement), per dare profondità.
+    function makeRidge({ z, scaleX, height, seed, color, opacity }) {
+      const w = 900;
+      const h = 220;
+      const segX = 240;
+      const segY = 50;
+
+      const geo = new THREE.PlaneGeometry(w, h, segX, segY);
+
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        const x = pos.getX(i);
+        const y = pos.getY(i);
+
+        // Profilo: più alto al centro, più basso ai lati
+        const nx = (x / (w*0.5));
+        const profile = Math.pow(1.0 - Math.abs(nx), 0.45);
+
+        // fbm per frastagliatura
+        const n = fbm((x*0.008) + seed, (y*0.02) + seed);
+        const jag = (n - 0.5) * 2.0;
+
+        // altezza finale: solo sopra la “linea base”
+        let yy = y;
+        if (y > -h*0.38) {
+          yy += profile * height * (0.55 + 0.45*n) + jag * height * 0.18;
+        } else {
+          // base più piatta
+          yy += jag * height * 0.05;
+        }
+
+        pos.setY(i, yy);
+      }
+
+      geo.computeVertexNormals();
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(color),
+        roughness: 1.0,
+        metalness: 0.0,
+        transparent: true,
+        opacity,
+        fog: true
+      });
+
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(0, 30, z);
+      mesh.scale.x = scaleX;
+      return mesh;
+    }
+
+    const ridges = [];
+    ridges.push(makeRidge({ z: -60,  scaleX: 1.00, height: 85,  seed: 10.2, color: "#1b2130", opacity: 1.0 }));
+    ridges.push(makeRidge({ z: -140, scaleX: 1.05, height: 120, seed: 22.7, color: "#151c2a", opacity: 0.98 }));
+    ridges.push(makeRidge({ z: -220, scaleX: 1.12, height: 150, seed: 35.4, color: "#121827", opacity: 0.92 }));
+    ridges.push(makeRidge({ z: -310, scaleX: 1.22, height: 185, seed: 48.9, color: "#0f1523", opacity: 0.88 }));
+
+    ridges.forEach(r => scene.add(r));
+
+    // ---------- Haze layer (una “foschia” volumetrica leggera) ----------
+    // Non è vera volumetria fisica, ma rende l’aria più “densa”.
+    const hazeGeo = new THREE.PlaneGeometry(900, 320, 1, 1);
+    const hazeMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      uniforms: {
+        fogColor: { value: duskFogColor.clone() },
+        density: { value: 0.0 }, // 0..1
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main(){
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 fogColor;
+        uniform float density;
+        varying vec2 vUv;
+        float rand(vec2 co){
+          return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453);
+        }
+        void main(){
+          // più denso verso l'orizzonte (parte bassa del piano)
+          float h = smoothstep(0.0, 0.85, 1.0 - vUv.y);
+          // granello finissimo (quasi impercettibile)
+          float g = (rand(vUv * 900.0) - 0.5) * 0.04;
+          float a = density * (0.55*h + 0.25) + g;
+          a = clamp(a, 0.0, 0.95);
+          gl_FragColor = vec4(fogColor, a);
+        }
+      `
+    });
+    const haze = new THREE.Mesh(hazeGeo, hazeMat);
+    haze.position.set(0, 55, -130);
+    scene.add(haze);
+
+    // ---------- UI ----------
+    const startBtn = document.getElementById("startBtn");
+    const fogIntensity = document.getElementById("fogIntensity");
+    const fogVal = document.getElementById("fogVal");
+    const fogSpeed = document.getElementById("fogSpeed");
+    const speedVal = document.getElementById("speedVal");
+    const view = document.getElementById("view");
+    const viewVal = document.getElementById("viewVal");
+
+    let experimentRunning = false;
+
+    function updateLabels(){
+      fogVal.textContent = `${Math.round(parseFloat(fogIntensity.value) * 100)}%`;
+      speedVal.textContent = `${Math.round(parseFloat(fogSpeed.value) * 100)}%`;
+      viewVal.textContent = `${view.value}°`;
+    }
+    updateLabels();
+
+    view.addEventListener("input", () => {
+      camera.fov = parseFloat(view.value);
+      camera.updateProjectionMatrix();
+      updateLabels();
+    });
+
+    fogIntensity.addEventListener("input", updateLabels);
+    fogSpeed.addEventListener("input", updateLabels);
+
+    startBtn.addEventListener("click", () => {
+      experimentRunning = !experimentRunning;
+      startBtn.textContent = experimentRunning ? "Ferma esperimento" : "Start esperimento";
+    });
+
+    // ---------- Fog dynamics ----------
+    // userTarget = livello richiesto dallo slider
+    // actualFog = livello effettivo (sale/scende nel tempo quando l'esperimento è attivo)
+    let actualFog = 0.0;
+
+    function applyFogLevel(level){
+      // level 0..1
+      // vicino: quanto presto “mangia” la scena
+      const near = lerp(120, 18, level);   // con molta nebbia, near si avvicina
+      const far  = lerp(520, 160, level);  // e far si avvicina
+      scene.fog.near = near;
+      scene.fog.far = far;
+
+      // Haze più presente
+      hazeMat.uniforms.density.value = level;
+
+      // Colore nebbia leggermente più “freddo” quando aumenta
+      const base = new THREE.Color("#6b7ea6");
+      const cold = new THREE.Color("#90a6bf");
+      scene.fog.color.copy(base).lerp(cold, level * 0.65);
+      skyMat.uniforms.fogColor.value.copy(scene.fog.color);
+
+      // “Spegnimento” progressivo delle creste lontane
+      for (let i=0;i<ridges.length;i++){
+        const r = ridges[i];
+        // più lontane = più trasparenti
+        const distFactor = i / (ridges.length - 1); // 0..1
+        const targetOpacity = lerp(1.0 - distFactor*0.15, 0.65 - distFactor*0.35, level);
+        r.material.opacity = targetOpacity;
+      }
+    }
+
+    // inizialmente: aria pulita
+    applyFogLevel(0.0);
+
+    // ---------- Render loop ----------
+    let last = performance.now();
+    function animate(now){
+      requestAnimationFrame(animate);
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+
+      // cielo: tempo
+      skyMat.uniforms.time.value = now * 0.001;
+
+      // aggiornamento nebbia solo se esperimento in corso
+      const target = clamp01(parseFloat(fogIntensity.value));
+      if (experimentRunning){
+        const spd = lerp(0.05, 0.65, clamp01(parseFloat(fogSpeed.value))); // scala
+        actualFog = lerp(actualFog, target, 1.0 - Math.pow(1.0 - spd, dt*60));
+      } else {
+        // quando fermo, resta dov’è (ma puoi ancora cambiare lo slider senza “scatto”)
+        // se vuoi che si adatti anche da fermo, sostituisci con: actualFog = lerp(actualFog, target, 0.02);
+      }
+
+      applyFogLevel(actualFog);
+
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    requestAnimationFrame(animate);
+
+    // ---------- Resize ----------
+    window.addEventListener("resize", () => {
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+    });
+  </script>
+</body>
+</html>
 
