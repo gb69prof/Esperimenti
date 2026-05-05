@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Frana da erosione dell’acqua — Esperimento 3D</title>
+
+  <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/"
+    }
+  }
+  </script>
+
+  <style>
+    :root{
+      --cyan:#45caff;
+      --blue:#167dff;
+      --gold:#ffb44d;
+      --orange:#ff7b1a;
+      --green:#55ff9d;
+      --red:#ff4b5c;
+      --panel:rgba(7,14,32,.82);
+      --panel-strong:rgba(5,11,27,.92);
+      --line:rgba(88,194,255,.28);
+      --text:#f5fbff;
+      --muted:#a9bed8;
+    }
+
+    *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html,body{ width:100%; height:100%; }
+    body{
+      margin:0;
+      overflow:hidden;
+      color:var(--text);
+      background:radial-gradient(circle at 50% 38%,#162044 0%,#070a16 48%,#02030a 100%);
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;
+    }
+    #scene{ position:fixed; inset:0; width:100vw; height:100vh; display:block; }
+
+    .hud{
+      position:fixed;
+      inset:0;
+      display:grid;
+      grid-template-columns:270px 1fr 330px;
+      grid-template-rows:auto 1fr auto;
+      gap:12px;
+      padding:12px;
+      pointer-events:none;
+    }
+
+    .glass{
+      background:linear-gradient(180deg,rgba(12,24,56,.84),rgba(5,9,22,.62));
+      border:1px solid var(--line);
+      border-radius:22px;
+      box-shadow:0 16px 60px rgba(0,0,0,.44), inset 0 0 30px rgba(69,202,255,.045);
+      backdrop-filter:blur(14px);
+    }
+
+    .title{
+      grid-column:1/4;
+      justify-self:center;
+      width:min(980px,100%);
+      padding:10px 18px 11px;
+      text-align:center;
+    }
+    .title h1{
+      margin:0;
+      font-size:clamp(1.55rem,3.1vw,3.55rem);
+      line-height:1;
+      letter-spacing:-.045em;
+      text-shadow:0 0 22px rgba(69,202,255,.50);
+    }
+    .title p{ margin:6px 0 0; color:var(--muted); font-size:clamp(.82rem,1.1vw,1rem); }
+
+    .left-panel{ grid-column:1; grid-row:2; align-self:start; padding:14px; pointer-events:auto; }
+    .right-panel{ grid-column:3; grid-row:2; align-self:start; padding:14px; pointer-events:auto; }
+
+    h2.panel-title{
+      margin:0 0 11px;
+      color:#dff6ff;
+      font-size:.78rem;
+      letter-spacing:.15em;
+      text-transform:uppercase;
+    }
+
+    .legend-item{
+      display:grid;
+      grid-template-columns:18px 1fr;
+      gap:9px;
+      padding:8px 0;
+      border-top:1px solid rgba(255,255,255,.06);
+      color:#dcecff;
+      line-height:1.3;
+      font-size:.86rem;
+    }
+    .legend-item:first-of-type{border-top:0}
+    .dot{ width:12px; height:12px; border-radius:50%; margin-top:4px; box-shadow:0 0 14px currentColor; }
+    .d-cyan{ background:var(--cyan); color:var(--cyan); }
+    .d-gold{ background:var(--gold); color:var(--gold); }
+    .d-green{ background:var(--green); color:var(--green); }
+    .d-orange{ background:var(--orange); color:var(--orange); }
+    .d-red{ background:var(--red); color:var(--red); }
+
+    .statbox{
+      margin-top:12px;
+      padding:12px;
+      border-radius:16px;
+      background:rgba(255,255,255,.045);
+      border:1px solid rgba(255,255,255,.08);
+      color:#dcecff;
+      font-size:.86rem;
+      line-height:1.38;
+    }
+    .statbox strong{color:white}
+    .big-score{display:block;font-size:1.55rem;color:var(--gold);font-weight:950;margin-top:4px;}
+
+    .gauge{
+      margin:10px 0 8px;
+      height:12px;
+      border-radius:999px;
+      overflow:hidden;
+      background:rgba(255,255,255,.10);
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);
+    }
+    .gauge span{ display:block; height:100%; width:100%; border-radius:999px; background:linear-gradient(90deg,var(--red),var(--orange),var(--gold),var(--green)); transition:width .25s ease; }
+
+    .btn-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+    button{
+      border:0;
+      border-radius:14px;
+      padding:10px 8px;
+      cursor:pointer;
+      color:white;
+      font-weight:900;
+      letter-spacing:.01em;
+      box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 10px 22px rgba(0,0,0,.25);
+      transition:transform .16s ease, filter .16s ease;
+      user-select:none;
+    }
+    button:hover{ transform:translateY(-1px); filter:brightness(1.12); }
+    button:active{ transform:translateY(1px) scale(.99); }
+    .start{ background:linear-gradient(135deg,#35d878,#167e45); }
+    .storm{ background:linear-gradient(135deg,#3494ff,#1a41b0); }
+    .river{ background:linear-gradient(135deg,#28d7d2,#125d84); }
+    .collapse{ background:linear-gradient(135deg,#ff4b5c,#8b1a27); }
+    .repair{ background:linear-gradient(135deg,#ffb44d,#a1530f); }
+    .reset{ background:linear-gradient(135deg,#7c8aa5,#30394d); }
+
+    .slider-row{
+      margin-top:9px;
+      padding:10px;
+      border-radius:16px;
+      background:rgba(255,255,255,.045);
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .slider-row label{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:7px;
+      color:#dcecff;
+      font-size:.85rem;
+      font-weight:800;
+    }
+    .slider-row span{ color:var(--gold); font-variant-numeric:tabular-nums; }
+    input[type="range"]{ width:100%; accent-color:var(--cyan); }
+
+    .lesson{
+      grid-column:1/4;
+      grid-row:3;
+      justify-self:center;
+      width:min(1110px,100%);
+      padding:13px 18px;
+      pointer-events:auto;
+      border-color:rgba(255,180,77,.32);
+      display:grid;
+      grid-template-columns:160px 1fr 210px;
+      gap:16px;
+      align-items:center;
+    }
+    .phase{ border-right:1px solid rgba(255,255,255,.10); padding-right:14px; }
+    .phase .step{ color:var(--gold); letter-spacing:.18em; text-transform:uppercase; font-size:.72rem; font-weight:950; margin-bottom:5px; }
+    .phase .mini{ color:#dff6ff; font-size:.88rem; line-height:1.25; font-weight:800; }
+    .lesson h2{ margin:0 0 5px; font-size:clamp(1.08rem,1.65vw,1.5rem); letter-spacing:-.03em; }
+    .lesson p{ margin:0; color:#d9e7f4; font-size:clamp(.84rem,1.05vw,.98rem); line-height:1.38; }
+    .lesson em{ font-style:normal; color:var(--cyan); font-weight:900; }
+    .lesson strong{ color:white; }
+    .mission{
+      border-left:1px solid rgba(255,255,255,.10);
+      padding-left:14px;
+      color:#e6f4ff;
+      font-size:.88rem;
+      line-height:1.28;
+    }
+    .mission b{ color:var(--green); }
+
+    .toast{
+      grid-column:2;
+      grid-row:2;
+      justify-self:center;
+      align-self:start;
+      margin-top:8px;
+      opacity:0;
+      transform:translateY(-8px);
+      transition:.3s ease;
+      padding:10px 14px;
+      border-radius:999px;
+      background:rgba(0,0,0,.62);
+      border:1px solid rgba(255,180,77,.25);
+      color:#fff4dd;
+      font-weight:900;
+      pointer-events:none;
+      text-align:center;
+    }
+    .toast.show{ opacity:1; transform:translateY(0); }
+
+    .label3d{
+      position:absolute;
+      transform:translate(-50%,-50%);
+      padding:5px 8px;
+      border-radius:999px;
+      color:white;
+      background:rgba(3,8,18,.70);
+      border:1px solid rgba(255,255,255,.16);
+      font-weight:900;
+      font-size:.72rem;
+      white-space:nowrap;
+      text-shadow:0 1px 4px #000;
+      pointer-events:none;
+      backdrop-filter:blur(8px);
+      opacity:.92;
+    }
+    .goldLabel{border-color:rgba(255,180,77,.42);box-shadow:0 0 18px rgba(255,180,77,.18)}
+    .blueLabel{border-color:rgba(69,202,255,.40);box-shadow:0 0 18px rgba(69,202,255,.14)}
+    .greenLabel{border-color:rgba(85,255,157,.42);box-shadow:0 0 18px rgba(85,255,157,.18)}
+    .redLabel{border-color:rgba(255,75,92,.42);box-shadow:0 0 18px rgba(255,75,92,.18)}
+
+    .start-screen{
+      position:fixed;
+      inset:0;
+      display:grid;
+      place-items:center;
+      background:radial-gradient(circle at 50% 42%,rgba(23,32,68,.85),rgba(2,3,10,.96));
+      z-index:5;
+      padding:24px;
+    }
+    .start-card{
+      width:min(720px,100%);
+      padding:28px;
+      border-radius:28px;
+      text-align:center;
+      background:linear-gradient(180deg,rgba(12,24,56,.94),rgba(5,9,22,.78));
+      border:1px solid rgba(69,202,255,.34);
+      box-shadow:0 24px 80px rgba(0,0,0,.60), inset 0 0 30px rgba(69,202,255,.06);
+    }
+    .start-card h1{ margin:0; font-size:clamp(2rem,5vw,4rem); letter-spacing:-.05em; }
+    .start-card p{ color:#d8e9f6; line-height:1.5; margin:14px auto 20px; max-width:610px; }
+    .start-card button{ font-size:1.05rem; padding:14px 22px; border-radius:18px; }
+
+    @media (max-height:760px), (max-width:1080px){
+      .hud{ grid-template-columns:1fr 1fr; grid-template-rows:auto 1fr auto auto; padding:10px; gap:10px; }
+      .title{ grid-column:1/3; padding:8px 14px; }
+      .title p{ display:none; }
+      .left-panel{ display:none; }
+      .right-panel{ grid-column:1/3; grid-row:4; width:100%; justify-self:center; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; padding:10px; }
+      .right-panel h2{ display:none; }
+      .btn-grid{ grid-column:1; grid-row:1; grid-template-columns:repeat(3,1fr); margin:0; }
+      .slider-row{ margin:0; padding:8px; }
+      .lesson{ grid-column:1/3; grid-row:3; width:100%; grid-template-columns:120px 1fr; padding:10px 12px; }
+      .lesson h2{ font-size:1.05rem; }
+      .lesson p{ font-size:.84rem; line-height:1.32; }
+      .mission{ display:none; }
+      .phase .mini{ font-size:.78rem; }
+      .label3d{ display:none!important; }
+      .toast{ grid-column:1/3; grid-row:2; }
+    }
+
+    @media (max-width:700px){
+      .right-panel{ grid-template-columns:1fr; }
+      .btn-grid{ grid-column:1; grid-template-columns:repeat(2,1fr); }
+      .slider-row{ display:none; }
+      .lesson{ grid-template-columns:1fr; gap:6px; }
+      .phase{ border-right:0; border-bottom:1px solid rgba(255,255,255,.10); padding:0 0 7px; }
+      .lesson p{ display:none; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <div class="start-screen" id="startScreen">
+    <div class="start-card glass">
+      <h1>Frana da erosione dell’acqua</h1>
+      <p>Esperimento 3D in forma di gioco: osserva come pioggia, infiltrazione e fiume erodono il pendio. Puoi accelerare la crisi oppure provare a rinforzare il versante.</p>
+      <button class="start" id="playIntroBtn">▶ Entra nell’esperimento</button>
+    </div>
+  </div>
+
+  <main class="hud">
+    <section class="title glass">
+      <h1>Frana da erosione dell’acqua</h1>
+      <p>Pioggia, infiltrazione e fiume alla base: il pendio cede quando l’equilibrio geologico viene divorato dal basso.</p>
+    </section>
+
+    <aside class="left-panel glass">
+      <h2 class="panel-title">Legenda</h2>
+      <div class="legend-item"><span class="dot d-gold"></span><span><strong>Versante</strong>: massa di terreno e roccia in equilibrio provvisorio.</span></div>
+      <div class="legend-item"><span class="dot d-cyan"></span><span><strong>Acqua</strong>: pioggia, infiltrazione e corrente al piede.</span></div>
+      <div class="legend-item"><span class="dot d-orange"></span><span><strong>Erosione</strong>: il fiume scava e toglie sostegno.</span></div>
+      <div class="legend-item"><span class="dot d-green"></span><span><strong>Intervento</strong>: argine e drenaggio rallentano il dissesto.</span></div>
+      <div class="legend-item"><span class="dot d-red"></span><span><strong>Frana</strong>: casa e alberi vengono trascinati.</span></div>
+      <div class="statbox">
+        <strong>Stabilità del versante</strong>
+        <span class="big-score" id="stabilityOut">100%</span>
+        <div class="gauge"><span id="stabilityBar"></span></div>
+        Erosione: <strong id="erosionOut">0%</strong><br>
+        Saturazione: <strong id="saturationOut">0%</strong><br>
+        Stato: <strong id="stateOut">stabile</strong><br>
+        Tempo: <strong id="timeOut">00:00</strong>
+      </div>
+    </aside>
+
+    <aside class="right-panel glass">
+      <h2 class="panel-title">Comandi gioco</h2>
+      <div class="btn-grid">
+        <button class="start" id="rainBtn">🌧 Pioggia</button>
+        <button class="river" id="riverBtn">💧 Fiume</button>
+        <button class="storm" id="stormBtn">⛈ Tempesta</button>
+        <button class="repair" id="repairBtn">🧱 Rinforza</button>
+        <button class="collapse" id="collapseBtn">⛰ Crollo</button>
+        <button class="reset" id="resetBtn">↺ Reset</button>
+      </div>
+
+      <div class="slider-row">
+        <label for="rainPower">Potenza pioggia <span id="rainPowerOut">0.8</span></label>
+        <input id="rainPower" type="range" min="0.2" max="2.4" step="0.1" value="0.8" />
+      </div>
+      <div class="slider-row">
+        <label for="riverPower">Forza fiume <span id="riverPowerOut">0.9</span></label>
+        <input id="riverPower" type="range" min="0.0" max="2.4" step="0.1" value="0.9" />
+      </div>
+      <div class="slider-row">
+        <label for="cohesion">Coesione terreno <span id="cohesionOut">0.7</span></label>
+        <input id="cohesion" type="range" min="0.2" max="1.3" step="0.1" value="0.7" />
+      </div>
+      <div class="slider-row">
+        <label for="cameraMode">Camera <span id="cameraOut">attiva</span></label>
+        <input id="cameraMode" type="range" min="0" max="1" step="1" value="1" />
+      </div>
+    </aside>
+
+    <section class="lesson glass">
+      <div class="phase">
+        <div class="step" id="lessonStep">Fase 0</div>
+        <div class="mini" id="lessonMini">Pendio stabile</div>
+      </div>
+      <div>
+        <h2 id="lessonTitle">Un equilibrio che sembra solido</h2>
+        <p id="lessonText">Il versante è stabile finché il piede regge e il terreno conserva coesione. L’acqua lavora lentamente: infiltra, appesantisce, scava e indebolisce.</p>
+      </div>
+      <div class="mission" id="missionText"><b>Missione:</b> fai partire la pioggia e osserva quando la stabilità scende sotto la soglia critica.</div>
+    </section>
+
+    <div class="toast" id="toast">Messaggio</div>
+  </main>
+
+  <div class="label3d goldLabel" id="labelSlope">Versante</div>
+  <div class="label3d blueLabel" id="labelRiver">Fiume erosivo</div>
+  <div class="label3d greenLabel" id="labelDrainage">Drenaggio / rinforzo</div>
+  <div class="label3d redLabel" id="labelFailure">Superficie di scivolamento</div>
+  <div class="label3d redLabel" id="labelHouse">Casa in frana</div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    const canvas = document.getElementById('scene');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x050712, 0.038);
+
+    const camera = new THREE.PerspectiveCamera(48, window.innerWidth / window.innerHeight, 0.1, 260);
+    camera.position.set(-7.6, 6.3, 13.6);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.07;
+    controls.enablePan = false;
+    controls.minDistance = 7;
+    controls.maxDistance = 28;
+    controls.maxPolarAngle = Math.PI * 0.80;
+    controls.target.set(0.5, 1.0, 0);
+
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.78, 0.55, 0.12);
+    composer.addPass(bloom);
+
+    const state = {
+      started:false,
+      raining:false,
+      riverOn:true,
+      storm:false,
+      collapsed:false,
+      repaired:false,
+      autoCamera:true,
+      rainPower:0.8,
+      riverPower:0.9,
+      cohesion:0.7,
+      erosion:0,
+      saturation:0,
+      stability:1,
+      slideT:0,
+      time:0,
+      gameTime:0
+    };
+
+    function std(color, metal=0.25, rough=0.38, emissive=0x000000, intensity=0){
+      return new THREE.MeshStandardMaterial({ color, metalness:metal, roughness:rough, emissive, emissiveIntensity:intensity });
+    }
+    function basic(color, opacity=1){
+      return new THREE.MeshBasicMaterial({ color, transparent:true, opacity, blending:THREE.AdditiveBlending, depthWrite:false });
+    }
+
+    scene.add(new THREE.HemisphereLight(0x8bcaff, 0x07030a, 1.08));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.35);
+    sun.position.set(-5, 8, 7);
+    scene.add(sun);
+    const coolLight = new THREE.PointLight(0x45caff, 2.8, 30);
+    coolLight.position.set(5, 3, 5);
+    scene.add(coolLight);
+    const warmLight = new THREE.PointLight(0xffb44d, 2.0, 24);
+    warmLight.position.set(-4, 4, 2);
+    scene.add(warmLight);
+
+    const terrainGroup = new THREE.Group();
+    const waterGroup = new THREE.Group();
+    const rainGroup = new THREE.Group();
+    const infiltrationGroup = new THREE.Group();
+    const debrisGroup = new THREE.Group();
+    const dustGroup = new THREE.Group();
+    const overlayGroup = new THREE.Group();
+    const sceneryGroup = new THREE.Group();
+    const starsGroup = new THREE.Group();
+    scene.add(terrainGroup, waterGroup, rainGroup, infiltrationGroup, debrisGroup, dustGroup, overlayGroup, sceneryGroup, starsGroup);
+
+    // Atmosfera
+    const starGeo = new THREE.BufferGeometry();
+    const starPos = [];
+    for(let i=0;i<720;i++){
+      const r = 18 + Math.random()*50;
+      const a = Math.random()*Math.PI*2;
+      const y = -5 + Math.random()*23;
+      starPos.push(Math.cos(a)*r, y, Math.sin(a)*r);
+    }
+    starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color:0x8fdcff, size:0.035, transparent:true, opacity:0.32 }));
+    starsGroup.add(stars);
+
+    const floor = new THREE.Mesh(new THREE.CircleGeometry(22, 128), new THREE.MeshStandardMaterial({ color:0x091124, metalness:0.55, roughness:0.23 }));
+    floor.rotation.x = -Math.PI/2;
+    floor.position.y = -2.24;
+    scene.add(floor);
+
+    const grid = new THREE.GridHelper(36, 48, 0x1d74ff, 0x19335f);
+    grid.position.y = -2.22;
+    grid.material.transparent = true;
+    grid.material.opacity = 0.13;
+    scene.add(grid);
+
+    // Terreno 3D deformabile
+    const width = 12.5;
+    const depth = 7.5;
+    const segX = 128;
+    const segZ = 76;
+    const terrainGeo = new THREE.PlaneGeometry(width, depth, segX, segZ);
+    terrainGeo.rotateX(-Math.PI/2);
+    const terrainBase = terrainGeo.attributes.position.array.slice();
+    const terrainMat = new THREE.MeshStandardMaterial({
+      color:0xa56d42,
+      roughness:0.94,
+      metalness:0.03,
+      flatShading:false,
+      emissive:0x2a1508,
+      emissiveIntensity:0.08
+    });
+    const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+    terrainGroup.add(terrain);
+
+    const terrainWire = new THREE.LineSegments(
+      new THREE.EdgesGeometry(terrainGeo),
+      new THREE.LineBasicMaterial({ color:0xffc48f, transparent:true, opacity:0.045 })
+    );
+    terrainGroup.add(terrainWire);
+
+    function noiseLike(x,z){
+      return Math.sin(x*2.1+z*0.9)*0.08 + Math.sin(z*3.3-x*0.55)*0.045 + Math.sin((x+z)*4.2)*0.025;
+    }
+
+    function baseHeight(x,z){
+      const slope = 3.25 - (x + 5.4) * 0.59;
+      const shoulder = Math.exp(-Math.pow((x+3.85)/1.95,2))*0.35;
+      const lateral = Math.max(0,1-Math.abs(z)/3.9)*0.22;
+      return slope + shoulder + lateral + noiseLike(x,z);
+    }
+
+    function erosionNotch(x,z){
+      const toe = Math.exp(-Math.pow((x-3.2)/1.02,2)) * Math.exp(-Math.pow(z/2.35,2));
+      const undercut = Math.exp(-Math.pow((x-3.95)/0.58,2)) * Math.exp(-Math.pow(z/2.1,2));
+      return state.erosion * (toe*1.00 + undercut*0.92);
+    }
+
+    function slideScar(x,z){
+      if(!state.collapsed) return 0;
+      const scar = Math.exp(-Math.pow((x+0.05)/1.42,2)) * Math.exp(-Math.pow(z/2.20,2));
+      return state.slideT * scar * 1.42;
+    }
+
+    function heightAt(x,z){
+      return Math.max(-1.70, baseHeight(x,z) - erosionNotch(x,z) - slideScar(x,z));
+    }
+
+    function updateTerrain(){
+      const arr = terrain.geometry.attributes.position.array;
+      for(let i=0;i<arr.length;i+=3){
+        const x = terrainBase[i];
+        const z = terrainBase[i+2];
+        arr[i+1] = heightAt(x,z);
+      }
+      terrain.geometry.attributes.position.needsUpdate = true;
+      terrain.geometry.computeVertexNormals();
+      terrainWire.geometry.dispose();
+      terrainWire.geometry = new THREE.EdgesGeometry(terrain.geometry);
+    }
+
+    // Parete verticale della scarpata per profondità
+    const wallGeo = new THREE.BufferGeometry();
+    const wallVerts = [];
+    const wallIndices = [];
+    const wallSteps = 96;
+    for(let i=0;i<=wallSteps;i++){
+      const z = -depth/2 + (i/wallSteps)*depth;
+      const x = 4.75;
+      const top = heightAt(x,z);
+      wallVerts.push(x, top, z, x, -1.70, z);
+      if(i<wallSteps){
+        const a=i*2,b=a+1,c=a+2,d=a+3;
+        wallIndices.push(a,b,c,b,d,c);
+      }
+    }
+    wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(wallVerts,3));
+    wallGeo.setIndex(wallIndices);
+    const wall = new THREE.Mesh(wallGeo, std(0x775139,0.08,0.88,0x1b0e06,0.06));
+    terrainGroup.add(wall);
+
+    function updateWall(){
+      const pos = wall.geometry.attributes.position.array;
+      for(let i=0;i<=wallSteps;i++){
+        const z = -depth/2 + (i/wallSteps)*depth;
+        pos[i*6] = 4.75;
+        pos[i*6+1] = heightAt(4.75,z);
+        pos[i*6+2] = z;
+        pos[i*6+3] = 4.75;
+        pos[i*6+4] = -1.70;
+        pos[i*6+5] = z;
+      }
+      wall.geometry.attributes.position.needsUpdate = true;
+      wall.geometry.computeVertexNormals();
+    }
+
+    // Fiume
+    const riverMat = new THREE.MeshPhysicalMaterial({
+      color:0x45caff,
+      transparent:true,
+      opacity:0.46,
+      roughness:0.06,
+      metalness:0.02,
+      transmission:0.35,
+      emissive:0x1478b4,
+      emissiveIntensity:0.48
+    });
+    const river = new THREE.Mesh(new THREE.BoxGeometry(13.5,0.16,2.35,32,1,10), riverMat);
+    river.position.set(5.05,-1.16,0);
+    waterGroup.add(river);
+
+    const foamPieces = [];
+    for(let i=0;i<95;i++){
+      const foam = new THREE.Mesh(new THREE.SphereGeometry(0.025+Math.random()*0.05,10,8), basic(0xcdf8ff,0.40));
+      foam.position.set(-1.4+Math.random()*12.5,-1.00,(Math.random()-0.5)*2.0);
+      foam.userData.speed = 0.6 + Math.random()*1.8;
+      waterGroup.add(foam);
+      foamPieces.push(foam);
+    }
+
+    // Frecce erosione
+    const erosionArrows = [];
+    for(let i=0;i<10;i++){
+      const arrow = new THREE.Group();
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.016,0.016,0.55,12), basic(0xff7b1a,0.55));
+      shaft.rotation.z = Math.PI/2;
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.07,0.19,18), basic(0xff7b1a,0.72));
+      head.rotation.z = -Math.PI/2;
+      head.position.x = 0.36;
+      arrow.add(shaft,head);
+      arrow.position.set(2.20+i*0.32,-0.45,-1.30+(i%4)*0.86);
+      arrow.rotation.y = i%2 ? -0.18 : 0.12;
+      overlayGroup.add(arrow);
+      erosionArrows.push(arrow);
+    }
+
+    // Superficie di scivolamento e crepe
+    const failurePts = [];
+    for(let i=0;i<=128;i++){
+      const t = i/128;
+      const x = -2.15 + t*4.85;
+      const z = Math.sin(t*Math.PI*2)*0.05;
+      const y = 2.68 - t*2.55 - Math.sin(t*Math.PI)*0.46;
+      failurePts.push(new THREE.Vector3(x,y,z));
+    }
+    const failureLine = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(failurePts),128,0.03,10,false), basic(0xff4b5c,0));
+    overlayGroup.add(failureLine);
+
+    const crackPts = [
+      new THREE.Vector3(-2.1,2.95,-1.25), new THREE.Vector3(-1.4,2.77,-0.45),
+      new THREE.Vector3(-0.45,2.60,0.1), new THREE.Vector3(0.45,2.43,0.55),
+      new THREE.Vector3(1.15,2.22,1.05)
+    ];
+    const crack = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(crackPts),90,0.025,8,false), basic(0xff4b5c,0));
+    overlayGroup.add(crack);
+
+    // Rinforzo/drenaggio
+    const repairGroup = new THREE.Group();
+    scene.add(repairGroup);
+    const drainagePipes = [];
+    for(let i=0;i<4;i++){
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.035,0.035,1.55,16), std(0x85d8ff,0.5,0.2,0x1a7fab,0.35));
+      pipe.rotation.z = Math.PI/2.35;
+      pipe.position.set(2.15+i*0.55, -0.18+i*0.08, -1.15+i*0.72);
+      repairGroup.add(pipe);
+      drainagePipes.push(pipe);
+    }
+    const retainingWall = new THREE.Mesh(new THREE.BoxGeometry(3.1,0.42,2.2), std(0x8c929a,0.5,0.33,0x1b2732,0.08));
+    retainingWall.position.set(3.35,-0.65,0);
+    repairGroup.add(retainingWall);
+    repairGroup.visible = false;
+
+    // Alberi realistici semplificati
+    const trees = [];
+    function makeTree(x,z,s=1){
+      const group = new THREE.Group();
+      const trunkMat = std(0x5c3a25,0.08,0.68,0x160b04,0.04);
+      const leafMat = std(0x2d8a4f,0.05,0.48,0x0b2e17,0.07);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.07*s,0.11*s,0.95*s,14), trunkMat);
+      trunk.position.y = 0.48*s;
+      group.add(trunk);
+      for(let i=0;i<4;i++){
+        const crown = new THREE.Mesh(new THREE.ConeGeometry((0.35-i*0.04)*s,0.65*s,18), leafMat);
+        crown.position.y = (0.98+i*0.22)*s;
+        crown.rotation.y = i*0.8;
+        group.add(crown);
+      }
+      for(let i=0;i<5;i++){
+        const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.018*s,0.032*s,0.38*s,8), trunkMat);
+        branch.position.y = (0.72+Math.random()*0.38)*s;
+        branch.rotation.z = (Math.random()<0.5?-1:1)*(0.75+Math.random()*0.35);
+        branch.rotation.y = Math.random()*Math.PI*2;
+        group.add(branch);
+      }
+      group.userData = {
+        x,z,s,
+        baseRot:new THREE.Euler(),
+        fallen:false,
+        dragged:false,
+        end:new THREE.Vector3(x,z,0)
+      };
+      group.position.set(x,heightAt(x,z),z);
+      sceneryGroup.add(group);
+      trees.push(group);
+      return group;
+    }
+    makeTree(-3.7,-1.75,0.95);
+    makeTree(-3.0,1.85,0.86);
+    makeTree(-1.4,-2.05,0.78);
+    makeTree(-0.45,1.85,0.76);
+    makeTree(0.8,-1.65,0.70);
+    makeTree(1.25,1.45,0.67);
+    makeTree(2.1,-0.95,0.62);
+
+    // Casa composta in pezzi, così può scivolare e rompersi
+    const houseGroup = new THREE.Group();
+    const housePieces = [];
+    function addHousePiece(mesh, breakOffset=new THREE.Vector3(), spin=new THREE.Vector3()){
+      mesh.userData.breakOffset = breakOffset;
+      mesh.userData.spin = spin;
+      mesh.userData.startPos = mesh.position.clone();
+      mesh.userData.startRot = mesh.rotation.clone();
+      housePieces.push(mesh);
+      houseGroup.add(mesh);
+      return mesh;
+    }
+    const wallMat = std(0xd8c8a9,0.12,0.62,0x24180d,0.05);
+    const roofMat = std(0x7a2f29,0.16,0.45,0x1a0604,0.05);
+    const woodMat = std(0x6b3f25,0.08,0.65,0x160804,0.04);
+    const glassMat = std(0x7bd1ff,0.15,0.15,0x145b7d,0.18);
+
+    addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(0.95,0.74,0.10), wallMat), new THREE.Vector3(-0.45,-0.25,0.28), new THREE.Vector3(0.3,0.8,0.2)).position.set(0,0.42,0.42);
+    addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(0.95,0.74,0.10), wallMat), new THREE.Vector3(0.40,-0.18,-0.35), new THREE.Vector3(0.4,-0.7,-0.25)).position.set(0,0.42,-0.42);
+    addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(0.10,0.74,0.82), wallMat), new THREE.Vector3(-0.32,-0.28,-0.20), new THREE.Vector3(-0.4,0.4,0.9)).position.set(-0.52,0.42,0);
+    addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(0.10,0.74,0.82), wallMat), new THREE.Vector3(0.50,-0.22,0.18), new THREE.Vector3(0.2,-0.8,0.5)).position.set(0.52,0.42,0);
+    const roof1 = addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(1.16,0.12,0.58), roofMat), new THREE.Vector3(-0.28,0.18,0.42), new THREE.Vector3(0.8,0.4,0.4));
+    roof1.position.set(0,0.90,0.28); roof1.rotation.x = 0.55;
+    const roof2 = addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(1.16,0.12,0.58), roofMat), new THREE.Vector3(0.36,0.10,-0.35), new THREE.Vector3(-0.7,-0.4,0.6));
+    roof2.position.set(0,0.90,-0.28); roof2.rotation.x = -0.55;
+    const chimney = addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(0.16,0.46,0.16), std(0x5c5c62,0.15,0.52)), new THREE.Vector3(0.22,0.16,0.32), new THREE.Vector3(0.8,0.4,0.2));
+    chimney.position.set(0.28,1.18,0.16);
+
+    for(let i=0;i<7;i++){
+      const beam = addHousePiece(new THREE.Mesh(new THREE.BoxGeometry(0.08,0.08,0.95), woodMat), new THREE.Vector3((Math.random()-0.5)*0.9,-0.1,(Math.random()-0.5)*0.8), new THREE.Vector3(Math.random(),Math.random(),Math.random()));
+      beam.position.set(-0.35+Math.random()*0.75,0.78+Math.random()*0.3,-0.15+Math.random()*0.3);
+      beam.rotation.set(Math.random()*0.4,Math.random()*1.2,Math.random()*0.4);
+    }
+    const win1 = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.24,0.025), glassMat); win1.position.set(-0.22,0.50,0.482); houseGroup.add(win1);
+    const win2 = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.24,0.025), glassMat); win2.position.set(0.25,0.50,0.482); houseGroup.add(win2);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(0.22,0.38,0.03), woodMat); door.position.set(0.0,0.28,0.486); houseGroup.add(door);
+
+    houseGroup.position.set(-2.45, heightAt(-2.45,0.15)+0.03, 0.15);
+    houseGroup.rotation.y = -0.12;
+    houseGroup.userData.startPos = houseGroup.position.clone();
+    houseGroup.userData.endPos = new THREE.Vector3(2.45,-0.72,0.05);
+    sceneryGroup.add(houseGroup);
+
+    // Blocchi di frana
+    const fragments = [];
+    for(let i=0;i<18;i++){
+      const frag = new THREE.Mesh(new THREE.DodecahedronGeometry(0.42,0), std(0x9d6a43,0.05,0.88,0x241307,0.08));
+      frag.scale.set(0.45+Math.random()*0.85,0.28+Math.random()*0.50,0.42+Math.random()*0.85);
+      const bx = -1.65 + Math.random()*3.0;
+      const bz = -1.45 + Math.random()*2.9;
+      frag.userData.basePos = new THREE.Vector3(bx,heightAt(bx,bz)+0.35+Math.random()*0.65,bz);
+      frag.userData.endPos = new THREE.Vector3(2.85+Math.random()*2.2,-0.80+Math.random()*0.24,bz*0.45+(Math.random()-0.5)*0.85);
+      frag.userData.delay = Math.random()*0.32;
+      frag.userData.spin = new THREE.Vector3(0.7+Math.random()*1.9,0.7+Math.random()*1.7,0.7+Math.random()*1.5);
+      frag.visible = false;
+      debrisGroup.add(frag);
+      fragments.push(frag);
+    }
+
+    // Pioggia
+    const rainDrops = [];
+    for(let i=0;i<360;i++){
+      const drop = new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.008,0.36,6), basic(0x45caff,0));
+      drop.rotation.z = Math.PI/18;
+      drop.userData.reset = () => drop.position.set(-5.8+Math.random()*10.2,2.25+Math.random()*6.8,-3.8+Math.random()*7.6);
+      drop.userData.reset();
+      rainGroup.add(drop);
+      rainDrops.push(drop);
+    }
+
+    // Infiltrazione
+    const infiltrationDrops = [];
+    for(let i=0;i<95;i++){
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.035,12,8), basic(0x55ff9d,0));
+      dot.userData.phase = Math.random();
+      dot.userData.x = -3.6 + Math.random()*4.6;
+      dot.userData.z = -2.1 + Math.random()*4.2;
+      infiltrationGroup.add(dot);
+      infiltrationDrops.push(dot);
+    }
+
+    // Polvere/spruzzi
+    const dustParticles = [];
+    for(let i=0;i<180;i++){
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.030+Math.random()*0.040,10,8), basic(0xc79d74,0));
+      p.userData.life = 0;
+      p.userData.v = new THREE.Vector3();
+      dustGroup.add(p);
+      dustParticles.push(p);
+    }
+    function emitDust(){
+      for(const p of dustParticles){
+        p.position.set(1.0+Math.random()*2.8,0.05+Math.random()*1.5,(Math.random()-0.5)*2.8);
+        p.userData.life = 0.9+Math.random()*1.2;
+        p.userData.v.set(0.018+Math.random()*0.078,0.02+Math.random()*0.055,(Math.random()-0.5)*0.055);
+        p.material.opacity = 0.36+Math.random()*0.36;
+      }
+    }
+
+    function computeStability(){
+      const repairBonus = state.repaired ? 0.34 : 0;
+      const stormPenalty = state.storm ? 0.08 : 0;
+      const raw = 1.18 + state.cohesion*0.58 + repairBonus - state.erosion*0.66 - state.saturation*0.82 - stormPenalty;
+      return THREE.MathUtils.clamp(raw/1.82,0,1);
+    }
+
+    const stabilityOut = document.getElementById('stabilityOut');
+    const stabilityBar = document.getElementById('stabilityBar');
+    const erosionOut = document.getElementById('erosionOut');
+    const saturationOut = document.getElementById('saturationOut');
+    const stateOut = document.getElementById('stateOut');
+    const timeOut = document.getElementById('timeOut');
+
+    function formatTime(t){
+      const m = Math.floor(t/60).toString().padStart(2,'0');
+      const s = Math.floor(t%60).toString().padStart(2,'0');
+      return `${m}:${s}`;
+    }
+
+    function updateStats(){
+      state.stability = computeStability();
+      stabilityOut.textContent = `${Math.round(state.stability*100)}%`;
+      stabilityBar.style.width = `${Math.round(state.stability*100)}%`;
+      erosionOut.textContent = `${Math.round(state.erosion*100)}%`;
+      saturationOut.textContent = `${Math.round(state.saturation*100)}%`;
+      timeOut.textContent = formatTime(state.gameTime);
+
+      let status = 'stabile';
+      if(state.collapsed) status = 'frana in corso';
+      else if(state.stability < 0.30) status = 'collasso imminente';
+      else if(state.stability < 0.55) status = 'instabilità critica';
+      else if(state.erosion > 0.12 || state.saturation > 0.18) status = 'degradazione attiva';
+      if(state.repaired && !state.collapsed) status += ' / rinforzato';
+      stateOut.textContent = status;
+    }
+
+    const lessonStep = document.getElementById('lessonStep');
+    const lessonMini = document.getElementById('lessonMini');
+    const lessonTitle = document.getElementById('lessonTitle');
+    const lessonText = document.getElementById('lessonText');
+    const missionText = document.getElementById('missionText');
+    function setLesson(step, mini, title, html, mission){
+      lessonStep.textContent = step;
+      lessonMini.textContent = mini;
+      lessonTitle.textContent = title;
+      lessonText.innerHTML = html;
+      missionText.innerHTML = mission;
+    }
+
+    function refreshLesson(){
+      if(state.collapsed){
+        setLesson('Fase 4','Rottura','La casa scivola e si rompe, gli alberi vengono travolti','Il piede del versante è stato eroso, il terreno è saturo e la superficie di scivolamento si è attivata. La frana trascina alberi, blocchi e casa verso il basso.', '<b>Esito:</b> collasso avvenuto. Premi Reset per riprovare con rinforzo o minore pioggia.');
+      }else if(!state.raining && state.erosion < 0.03 && state.saturation < 0.03){
+        setLesson('Fase 0','Pendio stabile','Un equilibrio che sembra solido','Il versante è stabile finché il piede regge e il terreno conserva coesione. L’acqua lavora lentamente: infiltra, appesantisce, scava e indebolisce.', '<b>Missione:</b> avvia la pioggia e osserva quando la stabilità scende.');
+      }else if(state.saturation < 0.24){
+        setLesson('Fase 1','Infiltrazione','L’acqua entra nel terreno','La pioggia penetra nel pendio. Il terreno diventa più pesante e perde attrito interno: non si vede ancora il crollo, ma il sistema si sta preparando a cedere.', '<b>Intervieni:</b> usa Rinforza per rallentare saturazione ed erosione.');
+      }else if(state.erosion < 0.30){
+        setLesson('Fase 2','Erosione al piede','Il fiume toglie sostegno dal basso','La corrente scava il piede del versante. La parte alta resta apparentemente ferma, ma poggia su una base sempre più fragile.', '<b>Osserva:</b> l’erosione cresce più rapidamente se il fiume è forte.');
+      }else if(state.stability > 0.16){
+        setLesson('Fase 3','Crisi','Crepe, alberi inclinati, scivolamento imminente','Le crepe indicano che il pendio non lavora più come un blocco compatto. L’acqua ha indebolito il terreno e la base è stata scavata.', '<b>Soglia critica:</b> sotto il 10% la frana si innesca automaticamente.');
+      }else{
+        setLesson('Fase 3','Soglia critica','L’equilibrio è praticamente rotto','Il versante è al limite. Quando un sistema è già indebolito, basta un piccolo aumento di pioggia o erosione per causare il collasso.', '<b>Attenzione:</b> crollo imminente.');
+      }
+    }
+
+    const toast = document.getElementById('toast');
+    let toastTimer = null;
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(()=>toast.classList.remove('show'),1500);
+    }
+
+    function triggerCollapse(){
+      if(state.collapsed) return;
+      state.collapsed = true;
+      state.slideT = 0;
+      fragments.forEach(f => { f.visible = true; f.position.copy(f.userData.basePos); f.rotation.set(Math.random(),Math.random(),Math.random()); });
+      trees.forEach((tree, index) => {
+        const exposed = tree.position.x > -1.7 && tree.position.x < 2.4;
+        if(exposed){
+          tree.userData.dragged = true;
+          tree.userData.startPos = tree.position.clone();
+          tree.userData.endPos = new THREE.Vector3(2.6+Math.random()*2.3,-0.95+Math.random()*0.35,tree.position.z*0.55+(Math.random()-0.5)*1.1);
+          tree.userData.delay = Math.random()*0.32;
+        }
+      });
+      housePieces.forEach(piece => {
+        piece.userData.startPos = piece.position.clone();
+        piece.userData.startRot = piece.rotation.clone();
+      });
+      houseGroup.userData.startPos = houseGroup.position.clone();
+      emitDust();
+      refreshLesson();
+      showToast('Frana innescata: alberi e casa vengono trascinati');
+    }
+
+    // UI
+    document.getElementById('playIntroBtn').onclick = () => {
+      document.getElementById('startScreen').style.display = 'none';
+      state.started = true;
+      showToast('Esperimento pronto');
+    };
+    document.getElementById('rainBtn').onclick = () => { state.raining = !state.raining; showToast(state.raining ? 'Pioggia attiva' : 'Pioggia fermata'); refreshLesson(); };
+    document.getElementById('riverBtn').onclick = () => { state.riverOn = !state.riverOn; showToast(state.riverOn ? 'Fiume erosivo attivo' : 'Fiume disattivato'); };
+    document.getElementById('stormBtn').onclick = () => { state.storm = !state.storm; if(state.storm) state.raining = true; showToast(state.storm ? 'Tempesta attiva' : 'Tempesta disattivata'); };
+    document.getElementById('repairBtn').onclick = () => { state.repaired = !state.repaired; repairGroup.visible = state.repaired; showToast(state.repaired ? 'Argine e drenaggio installati' : 'Rinforzo rimosso'); refreshLesson(); };
+    document.getElementById('collapseBtn').onclick = () => triggerCollapse();
+    document.getElementById('resetBtn').onclick = () => location.reload();
+    document.getElementById('rainPower').oninput = e => { state.rainPower = Number(e.target.value); document.getElementById('rainPowerOut').textContent = state.rainPower.toFixed(1); };
+    document.getElementById('riverPower').oninput = e => { state.riverPower = Number(e.target.value); document.getElementById('riverPowerOut').textContent = state.riverPower.toFixed(1); };
+    document.getElementById('cohesion').oninput = e => { state.cohesion = Number(e.target.value); document.getElementById('cohesionOut').textContent = state.cohesion.toFixed(1); updateStats(); refreshLesson(); };
+    document.getElementById('cameraMode').oninput = e => { state.autoCamera = Number(e.target.value) === 1; document.getElementById('cameraOut').textContent = state.autoCamera ? 'attiva' : 'manuale'; showToast(state.autoCamera ? 'Camera automatica' : 'Camera manuale'); };
+
+    const labelAnchors = [
+      ['labelSlope', new THREE.Vector3(-2.3,3.25,-1.25)],
+      ['labelRiver', new THREE.Vector3(5.1,-0.55,0)],
+      ['labelDrainage', new THREE.Vector3(3.05,0.15,1.35)],
+      ['labelFailure', new THREE.Vector3(0.25,1.35,0.35)],
+      ['labelHouse', new THREE.Vector3(1.3,1.2,0.2)]
+    ];
+    function projectLabels(){
+      for(const [id,pos] of labelAnchors){
+        const el = document.getElementById(id);
+        const v = pos.clone().project(camera);
+        el.style.left = ((v.x*0.5+0.5)*window.innerWidth) + 'px';
+        el.style.top = ((-v.y*0.5+0.5)*window.innerHeight) + 'px';
+        const hideDrainage = id === 'labelDrainage' && !state.repaired;
+        el.style.display = (!hideDrainage && v.z < 1 && v.z > -1 && window.innerWidth > 1080 && window.innerHeight > 760) ? 'block' : 'none';
+      }
+    }
+
+    function runSelfTests(){
+      console.assert(Number.isFinite(heightAt(0,0)), 'Test: heightAt deve restituire un numero finito');
+      console.assert(fragments.length === 18, 'Test: devono esistere 18 blocchi di frana');
+      console.assert(rainDrops.length === 360, 'Test: devono esistere 360 gocce di pioggia');
+      console.assert(infiltrationDrops.length === 95, 'Test: devono esistere 95 particelle di infiltrazione');
+      console.assert(housePieces.length >= 13, 'Test: la casa deve essere composta da più pezzi distruttibili');
+      console.assert(trees.length >= 7, 'Test: devono esserci almeno 7 alberi');
+    }
+
+    const clock = new THREE.Clock();
+    function animate(){
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.033);
+      state.time += dt;
+      if(state.started && !state.collapsed) state.gameTime += dt;
+
+      if(state.autoCamera){
+        const a = state.time * 0.072;
+        camera.position.x += (-7.0 + Math.sin(a)*2.7 - camera.position.x)*0.014;
+        camera.position.z += (13.0 + Math.cos(a)*1.6 - camera.position.z)*0.014;
+        camera.position.y += (6.1 + Math.sin(a*1.6)*0.35 - camera.position.y)*0.014;
+      }
+      controls.update();
+
+      if(state.raining && !state.collapsed){
+        const stormFactor = state.storm ? 1.75 : 1;
+        const repairFactor = state.repaired ? 0.58 : 1;
+        state.saturation = THREE.MathUtils.clamp(state.saturation + dt*(0.052 + state.rainPower*0.072)*stormFactor*repairFactor,0,1);
+        const riverFactor = state.riverOn ? state.riverPower : 0.12;
+        state.erosion = THREE.MathUtils.clamp(state.erosion + dt*(0.012 + riverFactor*0.065)*stormFactor*(state.repaired?0.62:1),0,1);
+      }else if(!state.collapsed){
+        state.saturation = THREE.MathUtils.clamp(state.saturation - dt*0.010*(state.repaired?1.9:1),0,1);
+      }
+
+      updateStats();
+      refreshLesson();
+      if(!state.collapsed && state.stability < 0.10) triggerCollapse();
+
+      updateTerrain();
+      updateWall();
+
+      // Pioggia
+      for(const drop of rainDrops){
+        if(state.raining){
+          const stormOpacity = state.storm ? 0.18 : 0;
+          drop.material.opacity = 0.15 + state.rainPower*0.19 + stormOpacity;
+          drop.position.y -= dt*(4.2 + state.rainPower*6.8*(state.storm?1.55:1));
+          drop.position.x += dt*(0.22 + (state.storm?0.62:0));
+          if(drop.position.y < -1.25) drop.userData.reset();
+        }else{
+          drop.material.opacity = 0;
+        }
+      }
+
+      // Infiltrazione
+      infiltrationDrops.forEach((d,i)=>{
+        const loop = (state.time*0.10*state.rainPower + d.userData.phase) % 1;
+        const x = d.userData.x;
+        const z = d.userData.z;
+        const surface = heightAt(x,z);
+        d.position.set(x, surface - loop*(0.55 + state.saturation*1.25), z);
+        d.material.opacity = state.raining ? (0.10 + state.saturation*0.42) : THREE.MathUtils.clamp(state.saturation*0.25,0,0.25);
+        d.scale.setScalar(0.8 + Math.sin(state.time*4+i)*0.12);
+      });
+
+      // Fiume e schiuma
+      river.visible = state.riverOn;
+      river.position.y = -1.16 + Math.sin(state.time*3.4)*0.018;
+      river.scale.x = 1 + state.riverPower*0.12;
+      river.material.emissiveIntensity = 0.32 + state.riverPower*0.52;
+      foamPieces.forEach(f=>{
+        f.visible = state.riverOn;
+        f.position.x += dt*f.userData.speed*(0.6 + state.riverPower*0.6);
+        f.position.y = -1.00 + Math.sin(state.time*4 + f.position.x)*0.035;
+        if(f.position.x > 11.0) f.position.x = -1.6;
+      });
+
+      erosionArrows.forEach((a,i)=>{
+        a.visible = state.riverOn;
+        a.children.forEach(c => c.material.opacity = state.riverOn ? (0.18 + state.erosion*0.60 + Math.sin(state.time*3+i)*0.05) : 0);
+        a.position.x += Math.sin(state.time*2+i)*0.004;
+      });
+
+      // Crepe e superfici
+      const alarm = 1 - state.stability;
+      crack.material.opacity = state.collapsed ? 0.78 : THREE.MathUtils.clamp((0.48-state.stability)*1.55,0,0.62);
+      failureLine.material.opacity = state.collapsed ? 0.78 : THREE.MathUtils.clamp((0.55-state.stability)*0.95,0,0.36);
+
+      // Alberi
+      trees.forEach((tree,index)=>{
+        const x = tree.userData.x;
+        const z = tree.userData.z;
+        if(!state.collapsed || !tree.userData.dragged){
+          tree.position.y = heightAt(x,z);
+          if(state.stability < 0.42 && x > -1.7 && x < 2.4){
+            tree.rotation.z = THREE.MathUtils.lerp(tree.rotation.z, -0.55*(1-state.stability), 0.035);
+          }
+        }else{
+          const t = THREE.MathUtils.clamp((state.slideT - tree.userData.delay)/(1-tree.userData.delay),0,1);
+          const ease = 1 - Math.pow(1-t,3);
+          tree.position.lerpVectors(tree.userData.startPos, tree.userData.endPos, ease);
+          tree.rotation.z = THREE.MathUtils.lerp(tree.rotation.z, -1.55, 0.055);
+          tree.rotation.x += dt*0.55;
+          tree.rotation.y += dt*0.35;
+        }
+      });
+
+      // Casa prima e durante il crollo
+      if(!state.collapsed){
+        houseGroup.position.y = heightAt(houseGroup.position.x, houseGroup.position.z) + 0.03;
+        if(state.stability < 0.42){
+          houseGroup.rotation.z = THREE.MathUtils.lerp(houseGroup.rotation.z, -0.24*(1-state.stability), 0.035);
+        }
+      }else{
+        state.slideT = THREE.MathUtils.clamp(state.slideT + dt*0.34,0,1);
+        const ease = 1 - Math.pow(1-state.slideT,3);
+        houseGroup.position.lerpVectors(houseGroup.userData.startPos, houseGroup.userData.endPos, ease);
+        houseGroup.position.y += Math.sin(state.slideT*Math.PI)*0.25;
+        houseGroup.rotation.z = THREE.MathUtils.lerp(houseGroup.rotation.z, -0.70, 0.035);
+        houseGroup.rotation.y += dt*0.10;
+        housePieces.forEach((piece,i)=>{
+          const localT = THREE.MathUtils.clamp((state.slideT - 0.22 - i*0.006)*1.55,0,1);
+          const e = 1 - Math.pow(1-localT,3);
+          piece.position.copy(piece.userData.startPos).addScaledVector(piece.userData.breakOffset, e);
+          piece.rotation.x = piece.userData.startRot.x + piece.userData.spin.x*e;
+          piece.rotation.y = piece.userData.startRot.y + piece.userData.spin.y*e;
+          piece.rotation.z = piece.userData.startRot.z + piece.userData.spin.z*e;
+        });
+        if(state.slideT > 0.12 && state.slideT < 0.16) emitDust();
+      }
+
+      // Frammenti rocciosi
+      if(state.collapsed){
+        fragments.forEach(f=>{
+          const t = THREE.MathUtils.clamp((state.slideT - f.userData.delay)/(1-f.userData.delay),0,1);
+          const ease = 1 - Math.pow(1-t,3);
+          f.position.lerpVectors(f.userData.basePos, f.userData.endPos, ease);
+          f.position.y += Math.sin(t*Math.PI)*0.38;
+          f.rotation.x += dt*f.userData.spin.x;
+          f.rotation.y += dt*f.userData.spin.y;
+          f.rotation.z += dt*f.userData.spin.z;
+        });
+      }
+
+      // Polvere
+      dustParticles.forEach(p=>{
+        if(p.userData.life > 0){
+          p.userData.life -= dt;
+          p.position.add(p.userData.v);
+          p.userData.v.y -= dt*0.026;
+          p.material.opacity = Math.max(0,p.userData.life*0.42);
+        }else{
+          p.material.opacity = 0;
+        }
+      });
+
+      repairGroup.visible = state.repaired;
+      terrainMat.emissiveIntensity = 0.07 + alarm*0.25;
+      coolLight.intensity = 2.2 + state.rainPower*0.36 + Math.sin(state.time*1.5)*0.3 + (state.storm?0.9:0);
+      warmLight.intensity = 1.5 + alarm*1.4;
+      bloom.strength = 0.58 + state.rainPower*0.08 + (state.collapsed ? 0.30 : 0) + (state.storm?0.18:0);
+      starsGroup.rotation.y += dt*0.006;
+
+      projectLabels();
+      composer.render();
+    }
+
+    window.addEventListener('resize',()=>{
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      composer.setSize(window.innerWidth, window.innerHeight);
+      bloom.setSize(window.innerWidth, window.innerHeight);
+      projectLabels();
+    });
+
+    updateTerrain();
+    updateWall();
+    updateStats();
+    refreshLesson();
+    runSelfTests();
+    animate();
+  </script>
+</body>
+</html>
